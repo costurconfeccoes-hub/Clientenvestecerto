@@ -1,6 +1,6 @@
-# Costur Confecções - Sistema Art Designer
+# Costur Confecções - Sistema Veste Certo
 
-Sistema de gerenciamento para a marca Art Designer da Costur Confecções.
+Sistema de gerenciamento para a marca Veste Certo da Costur Confecções.
 
 ## Funcionalidades
 - Acompanhamento de produção
