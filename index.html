@@ -1365,7 +1365,7 @@
                         </div>
                         <div class="legend-item">
                             <div class="legend-color" style="background-color: var(--secondary);"></div>
-                            <span>Período ocupado (VESTE CERTO)</span>
+                            <span>Período ocupado (todos os clientes)</span>
                         </div>
                         <div class="legend-item">
                             <div class="legend-color" style="background-color: var(--holiday-color);"></div>
@@ -1434,6 +1434,7 @@
         // CONFIGURAÇÕES BÁSICAS
         // ============================
         let appointments = [];
+        let allAppointments = []; // Armazenar TODOS os agendamentos (de todos os clientes)
         let bookedDates = {};
         let currentDate = new Date();
         let currentMonth = currentDate.getMonth();
@@ -1562,18 +1563,26 @@
         // FUNÇÕES DO FIREBASE
         // ============================
 
-        // Função para buscar agendamentos da VESTE CERTO do Firebase
+        // Função para buscar agendamentos de TODOS os clientes e também filtrar os da VESTE CERTO
         async function loadAppointmentsFromFirebase() {
-            console.log("🔥 Buscando agendamentos da VESTE CERTO no Firebase...");
+            console.log("🔥 Buscando agendamentos no Firebase (todos os clientes)...");
             
             try {
-                // Buscar todos e filtrar depois
+                // Buscar TODOS os agendamentos
                 const snapshot = await db.collection('appointments').get();
                 
                 appointments = [];
+                allAppointments = [];
                 snapshot.forEach(doc => {
                     const data = doc.data();
-                    // FILTRAR APENAS VESTE CERTO LOCALMENTE
+                    // Armazenar TODOS os agendamentos
+                    allAppointments.push({ 
+                        id: doc.id, 
+                        ...data,
+                        estimatedDays: data.estimatedDays || 1
+                    });
+                    
+                    // Filtrar APENAS VESTE CERTO para a lista de histórico
                     if (data.clientName && data.clientName.toUpperCase() === CLIENTE_FILTRO.toUpperCase()) {
                         appointments.push({ 
                             id: doc.id, 
@@ -1583,7 +1592,7 @@
                     }
                 });
                 
-                // Ordenar por data (mais recente primeiro)
+                // Ordenar por data (mais recente primeiro) para o histórico
                 appointments.sort((a, b) => {
                     const dateA = parseFirebaseDate(a.serviceDate) || new Date(0);
                     const dateB = parseFirebaseDate(b.serviceDate) || new Date(0);
@@ -1591,9 +1600,10 @@
                 });
                 
                 console.log(`✅ ${appointments.length} agendamentos da VESTE CERTO encontrados`);
+                console.log(`✅ ${allAppointments.length} agendamentos no total (todos os clientes)`);
                 
-                // Atualizar interface
-                updateBookedDates();
+                // Atualizar datas ocupadas com TODOS os clientes
+                updateBookedDatesWithAllClients();
                 loadAppointmentsList();
                 generateCalendar(currentMonth, currentYear);
                 
@@ -1601,6 +1611,34 @@
                 console.error("❌ Erro ao carregar agendamentos:", error);
                 showErrorMessage("Erro ao carregar agendamentos: " + error.message);
             }
+        }
+
+        // Nova função: Atualiza datas ocupadas considerando TODOS os clientes
+        function updateBookedDatesWithAllClients() {
+            bookedDates = {};
+            
+            allAppointments.forEach((appointment) => {
+                // Considera agendamentos ativos (independente do status)
+                if (appointment.status === 'active' || appointment.status === 'in-production' || 
+                    appointment.status === 'Agendado' || appointment.status === 'Em produção' ||
+                    appointment.status === 'Realizado' || appointment.status === 'completed') {
+                    
+                    const start = parseFirebaseDate(appointment.serviceDate);
+                    if (!start) return;
+                    
+                    const estimatedDays = appointment.estimatedDays || 1;
+                    
+                    // Marcar todos os dias do período como ocupados
+                    for (let i = 0; i < estimatedDays; i++) {
+                        const currentDate = new Date(start);
+                        currentDate.setDate(start.getDate() + i);
+                        const dateKey = currentDate.toISOString().split('T')[0];
+                        bookedDates[dateKey] = true;
+                    }
+                }
+            });
+            
+            console.log(`📌 ${Object.keys(bookedDates).length} datas ocupadas (todos os clientes)`);
         }
 
         // ============================
@@ -1658,7 +1696,7 @@
                         dayClass = "calendar-day past-day";
                     }
                     
-                    // Verificar se está ocupado
+                    // Verificar se está ocupado (AGORA CONSIDERA TODOS OS CLIENTES)
                     if (bookedDates[dateKey]) {
                         if (dayClass.includes("past-day")) {
                             dayClass = "calendar-day past-day booked";
@@ -1687,31 +1725,6 @@
             }
         }
 
-        function updateBookedDates() {
-            bookedDates = {};
-            
-            appointments.forEach((appointment) => {
-                if (appointment.status === 'active' || appointment.status === 'in-production' || 
-                    appointment.status === 'Agendado' || appointment.status === 'Em produção') {
-                    
-                    const start = parseFirebaseDate(appointment.serviceDate);
-                    if (!start) return;
-                    
-                    const estimatedDays = appointment.estimatedDays || 1;
-                    
-                    // ✅ CORREÇÃO: Usar a função parseFirebaseDate para datas consistentes
-                    for (let i = 0; i < estimatedDays; i++) {
-                        const currentDate = new Date(start);
-                        currentDate.setDate(start.getDate() + i);
-                        const dateKey = currentDate.toISOString().split('T')[0];
-                        bookedDates[dateKey] = true;
-                    }
-                }
-            });
-            
-            console.log(`📌 ${Object.keys(bookedDates).length} datas ocupadas pela VESTE CERTO`);
-        }
-
         function showErrorMessage(message) {
             const container = document.getElementById('appointments-list');
             container.innerHTML = `
@@ -1727,7 +1740,7 @@
         }
 
         // ============================
-        // FUNÇÃO PARA CARREGAR LISTA DE AGENDAMENTOS
+        // FUNÇÃO PARA CARREGAR LISTA DE AGENDAMENTOS (apenas VESTE CERTO)
         // ============================
         function loadAppointmentsList() {
             const appointmentsContainer = document.getElementById('appointments-list');
